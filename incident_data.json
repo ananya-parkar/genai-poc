@@ -1,0 +1,50 @@
+[
+    {
+        "SUBJECT": "\ud83d\udea8 Critical Alert: Cloud Server PROD-23 is Unreachable",
+        "INCIDENT_ID": "CLD-20250319-089",
+        "IMPACT_LEVEL": "Critical",
+        "AFFECTED_SERVICE": "Cloud Server PROD-23",
+        "TIMESTAMP": "2025-03-26T17:33:30",
+        "DESCRIPTION": null
+    },
+    {
+        "SUBJECT": "Fwd: \ud83d\udea8 Security Alert: Unauthorized Login Attempt Detected",
+        "INCIDENT_ID": "SEC-20250319-023",
+        "IMPACT_LEVEL": null,
+        "AFFECTED_SERVICE": null,
+        "TIMESTAMP": "2025-03-26T17:50:57",
+        "DESCRIPTION": null
+    },
+    {
+        "SUBJECT": "Fwd: \ud83d\udea8 Critical Alert: Cloud Server PROD-23 is Unreachable",
+        "INCIDENT_ID": "CLD-20250319-089",
+        "IMPACT_LEVEL": "Critical",
+        "AFFECTED_SERVICE": "Cloud Server PROD-23",
+        "TIMESTAMP": "2025-03-26T17:51:07",
+        "DESCRIPTION": null
+    },
+    {
+        "SUBJECT": "\ud83d\udea8 Critical Alert: Cloud Server PROD-23 is Unreachable",
+        "INCIDENT_ID": "CLD-20250319-089",
+        "IMPACT_LEVEL": "Critical",
+        "AFFECTED_SERVICE": "Cloud Server PROD-23",
+        "TIMESTAMP": "2025-03-26T18:17:40",
+        "DESCRIPTION": null
+    },
+    {
+        "SUBJECT": "Urgent: Critical System Failure Detected in Production",
+        "INCIDENT_ID": "INC-20250319-001",
+        "IMPACT_LEVEL": null,
+        "AFFECTED_SERVICE": "Payment Processing Gateway",
+        "TIMESTAMP": "2025-03-27T11:31:11",
+        "DESCRIPTION": "A critical system failure has been detected in the Production Environment\r\nat 03:25 AM UTC. Immediate attention is required to prevent further service\r\ndisruptions."
+    },
+    {
+        "SUBJECT": "Urgent: Critical System Failure Detected in Production",
+        "INCIDENT_ID": "INC-20250319-001",
+        "IMPACT_LEVEL": "High (Customer-facing services affected)",
+        "AFFECTED_SERVICE": "Payment Processing Gateway",
+        "TIMESTAMP": "2025-03-27T11:31:11",
+        "DESCRIPTION": "A critical system failure has been detected in the Production Environment\r\nat 03:25 AM UTC. Immediate attention is required to prevent further service\r\ndisruptions."
+    }
+]
