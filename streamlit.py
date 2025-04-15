@@ -31,17 +31,22 @@ st.markdown(
         background-color: #DBE9F4;
     }
     [data-testid="stSidebar"] {
-        background-color: #A7D1EA;
+        background-color: #0a015c;
         font-family: 'Roboto', sans-serif;
         color: #000000;
     }
-    [data-testid="stSidebar"] h1,
+    
     [data-testid="stSidebar"] h2,
     [data-testid="stSidebar"] h3 {
         color: #000000;
         font-family: 'Roboto', sans-serif;
     }
+    [data-testid="stSidebar"] h1 {
+       color: white !important;
+       
+    }
     h1 {
+
         color: #000000;
         font-family: 'Roboto', sans-serif;
     }
@@ -51,15 +56,15 @@ st.markdown(
         font-family: 'Roboto', sans-serif;
     }
     .stButton button {
-        background-color: white;
+        background-color: #ebebf0;
         color: #000000;
         border-color:white;
-        width: 85%;
+        width: 90%;
         font-family: 'Roboto', sans-serif;
         font-size: 20px; /* Adjust the value as needed */
     }
     .stButton button:hover {
-        background-color: #317aa8;
+        background-color: #f1edfc;
     }
     body {
         font-family: 'Roboto', sans-serif;
@@ -86,7 +91,7 @@ st.markdown(
      /* Add indent to About Us text */
     .about-us-text {
         text-align: justify;
-        margin-left: 20px; /* Adjust the value as needed */
+        margin-left: 5px; /* Adjust the value as needed */
     }
 
     .feature-text {
@@ -240,13 +245,13 @@ def home_page():
     ai_solutions_count = get_ai_solutions_count()
     st.markdown(f"**Incidents Resolved:** {ai_solutions_count}")
 
-    st.markdown("## Key Features")
+    st.subheader("Key Features")
     col1, col2, col3 = st.columns(3)
 
     with col1:
         st.image(
-            "https://as2.ftcdn.net/jpg/03/31/54/45/1000_F_331544598_m6ClVmywz7YrjReVe9UBPhgU2gi0nbZQ.jpg",
-            width=160,
+            "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS7HBEn8iWrAqeyWS_CUbhLQQYZjALicDRZ5w&s",
+            width=125,
         )
         st.markdown("**Automated Alert Analysis**")
            
@@ -260,8 +265,8 @@ def home_page():
 
     with col3:
         st.image(
-            "https://media.licdn.com/dms/image/D4D12AQHSjTvlK4d_Yw/article-cover_image-shrink_720_1280/0/1699567307145?e=2147483647&v=beta&t=jWUVxfVYoR7F5qPUseEmzQb1ZDPZEiMzx8GEmQKOndo",
-            width=180,
+            "https://kit8.net/wp-content/uploads/edd/2022/04/robots_and_humans_communication_preview.jpg",
+            width=160,
         )
         st.markdown("**AI-Powered Solutions**")
             
@@ -278,14 +283,9 @@ def home_page():
     st.markdown(
         f"""
         <div class="about-us-text">
-            Incident IQ is more than just a platform; it's a vision brought to life by a team of dedicated innovators at [Your Company Name].
-            We are a collective of AI aficionados, seasoned IT experts, and inventive problem-solvers, united by a singular mission: to transform incident management through the power of artificial intelligence.
-            Our Journey:
-            From the outset, we recognized the transformative potential of AI in revolutionizing IT incident management. Our journey began with a deep dive into the challenges faced by IT teams, from alert overloads to intricate root cause analyses. We envisioned a future where AI could alleviate these burdens, empowering IT professionals to concentrate on strategic endeavors.
-            Our Commitment:
-            At Incident IQ, we're committed to making AI accessible and user-friendly for businesses of all sizes. Whether you're a burgeoning startup or a global enterprise, our solutions are designed to seamlessly integrate into your existing workflows, delivering tangible value from day one.
-            Join us as we pioneer the next era of incident management, where AI-driven automation and intelligent insights converge to create a smarter, more efficient IT landscape.
-        </div>
+            We are building the future of IT operations with AI — simplifying alert management, root cause analysis, and smart remediation at scale.Our mission is to reduce downtime and manual effort in incident response by leveraging the power of Large Language Models and machine learning.
+            OpsPilot  acts as your intelligent co-pilot for IT operations, helping teams detect, diagnose, and resolve issues faster and smarter. Built for modern infrastructure, our system transforms raw alerts into actionable insights — driving efficiency, accuracy, and uptime.
+            From noise to knowledge — we turn chaos into clarity using AI-driven alert correlation and real-time RCA.
         """,
         unsafe_allow_html=True,
     )
@@ -319,7 +319,7 @@ def main():
         st.session_state.page = "Home"
     if st.sidebar.button("Fetch Latest Alert and Solution"):
         st.session_state.page = "Fetch Latest Alert and Solution"
-    if st.sidebar.button("View Incident Table"):
+    if st.sidebar.button("Incident Logs"):
         st.session_state.page = "View Incident Table"
 
     if st.session_state.page == "Home":
