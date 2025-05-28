@@ -7,10 +7,9 @@ import faiss
 import numpy as np
 from datetime import datetime, timedelta
  
-# Load configuration
+#Load configuration
 config = configparser.ConfigParser()
 config.read("config.ini")
- 
 SNOWFLAKE_CONFIG = {
     "user": config["snowflake"]["user"],
     "password": config["snowflake"]["password"],
@@ -18,27 +17,68 @@ SNOWFLAKE_CONFIG = {
     "warehouse": config["snowflake"]["warehouse"],
     "database": config["snowflake"]["database"],
     "schema": config["snowflake"]["schema"],
-}
+    }
  
-API_URL = "https://router.huggingface.co/novita/v3/openai/chat/completions"
+API_URL = "https://router.huggingface.co/together/v1/chat/completions"
 API_KEY = config["huggingface"]["api_key"]
- 
 embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
 HEADERS = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"}
  
+def clean_think_block(text):
+    # Remove <think> tags
+    text = re.sub(r'(?i)<\s*think\s*>.*?<\s*/\s*think\s*>', '', text, flags=re.DOTALL)
+    text = re.sub(r'(?i)<\s*/?\s*think\s*>', '', text)
+    # Remove markdown bold and headers
+    text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
+    text = re.sub(r'^#+\s*', '', text, flags=re.MULTILINE)
+    return text.strip()
+ 
+def select_llm():
+    print("Choose the LLM to generate the solution:")
+    print("1. DeepSeek-R1 (685B)")
+    print("2. Qwen3 (235B)")
+    print("3. ChatGLM (32B)")
+ 
+    choice = input("Enter 1, 2, or 3: ").strip()
+ 
+    if choice == "1":
+        return {
+            "model": "deepseek/deepseek-r1-turbo",
+            "api_url": "https://router.huggingface.co/novita/v3/openai/chat/completions"
+        }
+    elif choice == "2":
+        return {
+            "model": "Qwen/Qwen3-235B-A22B",
+            "api_url": "https://router.huggingface.co/nebius/v1/chat/completions"
+        }
+    elif choice == "3":
+        return {
+            "model": "thudm/glm-z1-32b-0414",
+            "api_url": "https://router.huggingface.co/novita/v3/openai/chat/completions"
+        }
+    else:
+        print("Invalid choice, defaulting to DeepSeek-R1.")
+        return {
+            "model": "deepseek/deepseek-r1-turbo",
+            "api_url": "https://router.huggingface.co/novita/v3/openai/chat/completions"
+        }
  
 def create_ai_solutions_table():
     conn = snowflake.connector.connect(**SNOWFLAKE_CONFIG)
     cursor = conn.cursor()
     query = """
-        CREATE TABLE IF NOT EXISTS AI_SOLUTIONS (
-            number STRING PRIMARY KEY,
-            priority STRING,
-            service STRING,
-            opened_at TIMESTAMP,
-            short_description STRING,
-            ai_generated_solution STRING
-        );
+    CREATE TABLE IF NOT EXISTS AI_SOLUTIONS (
+    number STRING PRIMARY KEY,
+    priority STRING,
+    service STRING,
+    opened_at TIMESTAMP,
+    short_description STRING,
+    customer_comments STRING,
+    generated_rca STRING,
+    "deepseek_solution" STRING,
+    "qwen_solution" STRING,
+    "glm_solution" STRING
+    );
     """
     cursor.execute(query)
     conn.commit()
@@ -51,21 +91,19 @@ def fetch_latest_unprocessed_alert():
     conn = snowflake.connector.connect(**SNOWFLAKE_CONFIG)
     cursor = conn.cursor()
     query = """
-        SELECT number, caller, category, subcategory, service, service_offering, configuration_item, channel,
-               state, impact, urgency, priority, assignment_group, assigned_to, short_description, description,
-               opened_at, processed
-        FROM alerts_data
-        WHERE rca_processed = TRUE AND number NOT IN (SELECT number FROM AI_SOLUTIONS)
-        ORDER BY opened_at DESC
-        LIMIT 1;
-    """
+            SELECT number, caller, category, subcategory, service, service_offering,
+            configuration_item, channel, state, impact, urgency, priority, assignment_group,
+            assigned_to, short_description, description, opened_at, processed
+            FROM alerts_data
+            WHERE rca_processed = TRUE AND number NOT IN (SELECT number FROM AI_SOLUTIONS)
+            ORDER BY opened_at DESC LIMIT 1;
+            """
     cursor.execute(query)
     row = cursor.fetchone()
     colnames = [desc[0].lower() for desc in cursor.description]
     cursor.close()
     conn.close()
     return dict(zip(colnames, row)) if row else None
- 
  
 def is_incident_already_processed(incident_number):
     conn = snowflake.connector.connect(**SNOWFLAKE_CONFIG)
@@ -77,79 +115,73 @@ def is_incident_already_processed(incident_number):
     conn.close()
     return exists
  
-def generate_solution(alert_data, similar_solution):
+def fetch_generated_rca(incident_number):
+    conn = snowflake.connector.connect(**SNOWFLAKE_CONFIG)
+    cursor = conn.cursor()
+    query = "SELECT rca FROM rca_results WHERE number = %s"
+    cursor.execute(query, (incident_number,))
+    result = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return result[0] if result else ""
+ 
+def generate_solution(alert_data, similar_solution, llm, user_input=""):
     if not alert_data:
-        return "No new alerts found."
+        return "No alert data provided."
  
-    short_desc = alert_data.get('short_description') or "No description provided."
-    description = alert_data.get('description') or "No detailed description."
- 
-    formatted_alert = f"""
-        Incident ID: {alert_data['number']}
-        Caller: {alert_data.get('caller', 'N/A')}
-        Category: {alert_data.get('category', 'N/A')}
-        Subcategory: {alert_data.get('subcategory', 'N/A')}
-        Service: {alert_data.get('service', 'N/A')}
-        Service Offering: {alert_data.get('service_offering', 'N/A')}
-        Configuration Item: {alert_data.get('configuration_item', 'N/A')}
-        Channel: {alert_data.get('channel', 'N/A')}
-        State: {alert_data.get('state', 'N/A')}
-        Impact: {alert_data.get('impact', 'N/A')}
-        Urgency: {alert_data.get('urgency', 'N/A')}
-        Priority: {alert_data.get('priority', 'N/A')}
-        Assignment Group: {alert_data.get('assignment_group', 'N/A')}
-        Assigned To: {alert_data.get('assigned_to', 'N/A')}
-        Short Description: {short_desc}
-        Description: {description}
-        Opened At: {alert_data.get('opened_at', 'N/A')}
-    """
- 
-    # Structured prompt
-    base_prompt = (
-        "You are a cross-platform database and infrastructure troubleshooting expert. "
-        "Based on the following incident or log details, provide a detailed solution using this format:\n\n"
-        "1. Issue Summary: \n"
-        "- Describe the main issue in 1-2 sentences.\n\n"
-        "2. Remediation Steps: \n"
-        "- Provide a detailed, step-by-step resolution plan. Use SQL or CLI commands where appropriate.\n\n"
-        "3. Verification: \n"
-        "- Explain how to validate that the issue has been resolved.\n\n"
-        "4. Generalization: \n"
-        "- Suggest how the solution can be adapted to similar systems.\n\n"
+    prompt = (
+        f"{user_input.strip()}\n\n"
+        f"Incident Details:\n"
+        f"Number: {alert_data.get('number', 'N/A')}\n"
+        f"Short Description: {alert_data.get('short_description', 'N/A')}\n"
+        f"Description: {alert_data.get('description', 'N/A')}\n"
+        f"Priority: {alert_data.get('priority', 'N/A')}\n"
+        f"Business Service: {alert_data.get('business_service', 'N/A')}\n"
+        f"Customer Comments: {alert_data.get('customer_comments', 'N/A')}\n"
     )
- 
     if similar_solution:
-        prompt = f"{base_prompt}Incident Details:\n{formatted_alert}\nSimilar Solution:\n{similar_solution}"
-    else:
-        prompt = f"{base_prompt}Incident Details:\n{formatted_alert}"
- 
-    payload = {
-        "model": "deepseek/deepseek-prover-v2-671b",
-        "messages": [{"role": "user", "content": prompt}]
-    }
+        prompt += f"\nSimilar Solution:\n{similar_solution.strip()}\n"
  
     try:
-        response = requests.post(API_URL, headers=HEADERS, json=payload)
+        response = requests.post(
+            llm["api_url"],
+            headers=HEADERS,
+            json={
+                "model": llm["model"],
+                "messages": [{"role": "user", "content": prompt}]
+            }
+        )
         response.raise_for_status()
         result = response.json()
         message = result["choices"][0]["message"]["content"]
- 
-        # Clean formatting
-        message = re.sub(r"\*\*(.*?)\*\*", r"\1", message)
-        message = re.sub(r"#+\s*", "", message)
- 
-        return message.strip()
+       
+        cleaned_message = clean_think_block(message.strip())
+        print(f"Final RCA:\n{cleaned_message}")
+       
+        return cleaned_message
     except Exception as e:
-        print(f"Error: {e}")
-        return "API request failed."
+        print(f"Error during RCA generation: {e}")
+        return None
  
+def store_ai_solution(alert_data, ai_solution, generated_rca, model_name):
+    column_map = {
+        "deepseek/deepseek-r1-turbo": "DEEPSEEK_SOLUTION",
+        "Qwen/Qwen3-235B-A22B": "QWEN_SOLUTION",
+        "thudm/glm-z1-32b-0414": "GLM_SOLUTION"
+    }
  
-def store_ai_solution(alert_data, ai_solution):
+    if model_name not in column_map:
+        raise ValueError(f"Model name '{model_name}' not available/specified properly.")
+ 
+    target_column = column_map[model_name]
+ 
     conn = snowflake.connector.connect(**SNOWFLAKE_CONFIG)
     cursor = conn.cursor()
-    query = """
-        INSERT INTO AI_SOLUTIONS (number, priority, service, opened_at, short_description, ai_generated_solution)
-        VALUES (%s, %s, %s, %s, %s, %s)
+    query = f"""
+    INSERT INTO AI_SOLUTIONS (
+        number, priority, service, opened_at, short_description,
+        customer_comments, generated_rca, {target_column}
+    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
     """
     values = (
         alert_data['number'],
@@ -157,13 +189,15 @@ def store_ai_solution(alert_data, ai_solution):
         alert_data.get('service'),
         alert_data.get('opened_at'),
         alert_data.get('short_description'),
+        alert_data.get('customer_comments', ""),
+        generated_rca,
         ai_solution
     )
     cursor.execute(query, values)
     conn.commit()
     cursor.close()
     conn.close()
-    print(f"\nStored AI solution for Incident {alert_data['number']}")
+    print(f"\nStored AI solution for Incident {alert_data['number']} in column {target_column}")
  
  
 def mark_alert_processed(alert_number):
@@ -176,11 +210,25 @@ def mark_alert_processed(alert_number):
     conn.close()
     print(f"Marked alert {alert_number} as processed.")
  
+def load_existing_embeddings(model_name):
+    column_map = {
+        "deepseek/deepseek-r1-turbo": "deepseek_solution",
+        "Qwen/Qwen3-235B-A22B": "qwen_solution",
+        "thudm/glm-z1-32b-0414": "glm_solution"
+    }
  
-def load_existing_embeddings():
+    if model_name not in column_map:
+        raise ValueError(f"Model name '{model_name}' not available/specified properly.")
+ 
+    target_column = column_map[model_name]
+ 
     conn = snowflake.connector.connect(**SNOWFLAKE_CONFIG)
     cursor = conn.cursor()
-    query = "SELECT number, short_description, ai_generated_solution, opened_at FROM AI_SOLUTIONS;"
+    query = f"""
+        SELECT number, short_description, {target_column}, opened_at
+        FROM AI_SOLUTIONS
+        WHERE {target_column} IS NOT NULL
+    """
     cursor.execute(query)
     rows = cursor.fetchall()
     cursor.close()
@@ -195,7 +243,6 @@ def load_existing_embeddings():
     opened_dates = [row[3] for row in rows]
     return incident_ids, descriptions, solutions, opened_dates
  
- 
 def build_faiss_index(descriptions):
     embeddings = embedding_model.encode(descriptions, convert_to_numpy=True)
     dim = embeddings.shape[1]
@@ -203,57 +250,78 @@ def build_faiss_index(descriptions):
     index.add(embeddings)
     return index
  
- 
-def check_for_similar_alert(new_description, index, solutions, threshold=0.85):
+def check_for_similar_alert(new_description, index, solutions, opened_dates, threshold=0.85):
     if not new_description or index is None or not solutions:
         return None
- 
     embedding = embedding_model.encode([new_description], convert_to_numpy=True)
     D, I = index.search(embedding, k=1)
     similarity = 1 / (1 + D[0][0])
-    if similarity >= threshold:
-        idx = I[0][0]
-        if idx < len(solutions):
+    idx = I[0][0]
+    if similarity >= threshold and idx < len(solutions):
+        solution_date = opened_dates[idx]
+        if solution_date and datetime.utcnow() - solution_date <= timedelta(days=60):
             return solutions[idx]
     return None
  
-
-def main(incident_number):
+def main(incident_number=None):
+    llm = select_llm()
+    model_name = llm["model"]
     conn = cur = None
     try:
+        if not incident_number:
+            alert_data = fetch_latest_unprocessed_alert()
+            if not alert_data:
+                print("No unprocessed alert found.")
+                return
+            incident_number = alert_data['number']
         conn = snowflake.connector.connect(**SNOWFLAKE_CONFIG)
         cur = conn.cursor()
- 
         cur.execute("SELECT * FROM alerts_data WHERE number = %s", (incident_number,))
         alert = cur.fetchone()
         if not alert:
             print(f"No alert found for incident {incident_number}.")
             return
-        
         colnames = [desc[0].lower() for desc in cur.description]
         alert_data = dict(zip(colnames, alert))
         print(f"Processing incident {incident_number}")
-
-        incident_ids, descriptions, solutions, _ = load_existing_embeddings()
+ 
+        user_input=input("Enter your query or additional details for solution generation:").strip()
+        incident_ids, descriptions, solutions, opened_dates = load_existing_embeddings(model_name)
         index = build_faiss_index(descriptions) if descriptions else None
-        similar_solution = check_for_similar_alert(alert_data.get("short_description",""), index, solutions)
-        ai_solution = generate_solution(alert_data, similar_solution)
-
-        print("\n Generated Solution:\n")
+        similar_solution = check_for_similar_alert(
+            alert_data.get("short_description", ""), index, solutions, opened_dates
+        )
+        generated_rca = fetch_generated_rca(incident_number)
+       
+        if generated_rca:
+            generated_rca = clean_think_block(generated_rca.strip())
+ 
+        full_prompt = user_input + "\n\n" + generated_rca if generated_rca else user_input
+       
+        ai_solution = generate_solution(alert_data, similar_solution, llm, user_input = full_prompt)
+       
+        print("\nGenerated Solution:\n")
         print(ai_solution)
-
-        store_ai_solution(alert_data, ai_solution)
+       
+        store_ai_solution(alert_data, ai_solution, generated_rca, model_name)
         mark_alert_processed(incident_number)
+       
         print(f"Processed solutions for Incident {incident_number}")
+       
         conn.commit()
+   
     except snowflake.connector.errors.Error as e:
         print(f"Snowflake error: {e}")
+   
     except Exception as e:
         print(f"Unexpected error: {e}")
+   
     finally:
         if cur:
             cur.close()
         if conn:
-            conn.close() 
+            conn.close()
+ 
 if __name__ == "__main__":
     main()
+ 
